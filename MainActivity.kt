@@ -40,6 +40,10 @@ data class Track(
 
 class MainActivity : ComponentActivity() {
 
+    private var mediaPlayer: MediaPlayer? = null
+    private var currentIndex: Int = -1
+    private var isPlaying: Boolean = false
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
