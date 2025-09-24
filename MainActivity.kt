@@ -218,8 +218,23 @@ class MainActivity : ComponentActivity() {
     private fun extractContrastColor(bitmap: android.graphics.Bitmap): Color {
         return try {
             val palette = Palette.from(bitmap).generate()
-            val vibrant = palette.getLightVibrantColor(android.graphics.Color.CYAN)
-            Color(vibrant)
+            val dominantColor = palette.getDominantColor(android.graphics.Color.DKGRAY)
+
+            // Пробуем разные варианты контрастных цветов в порядке приоритета
+            val contrastCandidates = listOf(
+                palette.getLightVibrantColor(android.graphics.Color.CYAN),
+                palette.getVibrantColor(android.graphics.Color.CYAN),
+                palette.getDarkVibrantColor(android.graphics.Color.CYAN),
+                palette.getLightMutedColor(android.graphics.Color.CYAN),
+                palette.getMutedColor(android.graphics.Color.CYAN),
+                palette.getDarkMutedColor(android.graphics.Color.CYAN)
+            )
+
+            // Ищем первый контрастный цвет, который отличается от доминирующего
+            val contrastColor = contrastCandidates.firstOrNull { it != dominantColor }
+                ?: android.graphics.Color.CYAN // fallback если все совпадают
+
+            Color(contrastColor)
         } catch (e: Exception) {
             Color(0xFFFF4081)
         }
