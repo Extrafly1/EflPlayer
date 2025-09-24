@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import androidx.palette.graphics.Palette
 import kotlinx.coroutines.delay
 import java.io.File
+import java.util.concurrent.TimeUnit
 
 data class Track(
     val title: String,
@@ -180,7 +181,8 @@ class MainActivity : ComponentActivity() {
                             playTrack(prevIndex)
                         },
                         modifier = if (isFullScreen) Modifier.fillMaxSize()
-                        else Modifier.wrapContentHeight().fillMaxWidth()
+                        else Modifier.wrapContentHeight().fillMaxWidth(),
+                        mediaPlayer = mediaPlayer.value!!
                     )
                 }
             }
@@ -295,9 +297,21 @@ fun MusicPlayer(
     onPlayPauseClick: () -> Unit,
     onNextClick: () -> Unit,
     onPrevClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    mediaPlayer: MediaPlayer
 ) {
     val contentColor = if (dominantColor.isLight()) Color.Black else Color.White
+    var sliderPosition by remember { mutableStateOf(progress) }
+
+    LaunchedEffect(progress) {
+        sliderPosition = progress
+    }
+
+    fun formatTime(ms: Int): String {
+        val minutes = TimeUnit.MILLISECONDS.toMinutes(ms.toLong())
+        val seconds = TimeUnit.MILLISECONDS.toSeconds(ms.toLong()) % 60
+        return String.format("%02d:%02d", minutes, seconds)
+    }
 
     Card(
         modifier = modifier.padding(8.dp),
@@ -346,14 +360,34 @@ fun MusicPlayer(
 
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    LinearProgressIndicator(
-                        progress = progress,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(4.dp),
-                        color = progressColor,
-                        trackColor = Color.DarkGray.copy(alpha = 0.3f)
+                    // Slider вместо LinearProgressIndicator
+                    Slider(
+                        value = sliderPosition,
+                        onValueChange = {
+                            sliderPosition = it
+                        },
+                        onValueChangeFinished = {
+                            val newPosition = (mediaPlayer.duration * sliderPosition).toInt()
+                            mediaPlayer.seekTo(newPosition)
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = SliderDefaults.colors(
+                            thumbColor = progressColor,
+                            activeTrackColor = progressColor,
+                            inactiveTrackColor = Color.DarkGray.copy(alpha = 0.3f)
+                        )
                     )
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    // Время трека
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(formatTime((mediaPlayer.currentPosition)), color = contentColor, style = MaterialTheme.typography.bodySmall)
+                        Text(formatTime((mediaPlayer.duration)), color = contentColor, style = MaterialTheme.typography.bodySmall)
+                    }
 
                     Spacer(modifier = Modifier.height(16.dp))
 
@@ -418,14 +452,32 @@ fun MusicPlayer(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                LinearProgressIndicator(
-                    progress = progress,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(4.dp),
-                    color = progressColor,
-                    trackColor = Color.DarkGray.copy(alpha = 0.3f)
+                Slider(
+                    value = sliderPosition,
+                    onValueChange = {
+                        sliderPosition = it
+                    },
+                    onValueChangeFinished = {
+                        val newPosition = (mediaPlayer.duration * sliderPosition).toInt()
+                        mediaPlayer.seekTo(newPosition)
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = SliderDefaults.colors(
+                        thumbColor = progressColor,
+                        activeTrackColor = progressColor,
+                        inactiveTrackColor = Color.DarkGray.copy(alpha = 0.3f)
+                    )
                 )
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(formatTime(mediaPlayer.currentPosition), color = contentColor, style = MaterialTheme.typography.bodySmall)
+                    Text(formatTime(mediaPlayer.duration), color = contentColor, style = MaterialTheme.typography.bodySmall)
+                }
 
                 Spacer(modifier = Modifier.height(16.dp))
 
