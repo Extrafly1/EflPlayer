@@ -24,9 +24,10 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.unit.dp
+import androidx.palette.graphics.Palette
 import kotlinx.coroutines.delay
 import java.io.File
 
@@ -41,16 +42,30 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            MaterialTheme {
-                Surface(modifier = Modifier.fillMaxSize(), color = Color(0xFF121212)) {
-                    MusicApp()
+            var dominantColor by remember { mutableStateOf(Color(0xFF1E1E1E)) }
+
+            MaterialTheme(
+                colorScheme = darkColorScheme(
+                    primary = dominantColor,
+                    secondary = dominantColor,
+                    background = Color(0xFF121212),
+                    surface = Color(0xFF1E1E1E)
+                )
+            ) {
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = Color(0xFF121212)
+                ) {
+                    MusicApp(onDominantColorChange = { color ->
+                        dominantColor = color
+                    })
                 }
             }
         }
     }
 
     @Composable
-    fun MusicApp() {
+    fun MusicApp(onDominantColorChange: (Color) -> Unit) {
         var hasPermission by remember { mutableStateOf(false) }
         val tracks = remember { mutableStateListOf<Track>() }
         var currentIndex by remember { mutableStateOf(-1) }
@@ -66,7 +81,6 @@ class MainActivity : ComponentActivity() {
         ) { permissions ->
             hasPermission = permissions.values.all { it }
             if (hasPermission) {
-                // запускаем сканирование в фоне
                 tracks.addAll(scanAudioFiles(Environment.getExternalStorageDirectory()))
                 isLoading = false
             } else {
@@ -106,55 +120,68 @@ class MainActivity : ComponentActivity() {
                     start()
                 }
                 isPlaying = true
+
+                val cover = tracks[index].cover
+                if (cover != null) {
+                    val bitmap = BitmapFactory.decodeByteArray(cover, 0, cover.size)
+                    extractDominantColor(bitmap)?.let { color ->
+                        onDominantColorChange(color)
+                    } ?: run {
+                        onDominantColorChange(Color(0xFF1E1E1E))
+                    }
+                } else {
+                    onDominantColorChange(Color(0xFF1E1E1E))
+                }
             }
         }
 
         when {
-            isLoading -> {
-                LoadingScreen()
-            }
-
-            else -> {
-                Column(modifier = Modifier.fillMaxSize()) {
-                    if (!isFullScreen) {
-                        LazyColumn(modifier = Modifier.weight(1f)) {
-                            items(tracks) { track ->
-                                TrackItem(track = track) {
-                                    val index = tracks.indexOf(track)
-                                    playTrack(index)
-                                }
+            isLoading -> LoadingScreen()
+            else -> Column(modifier = Modifier.fillMaxSize()) {
+                if (!isFullScreen) {
+                    LazyColumn(modifier = Modifier.weight(1f)) {
+                        items(tracks) { track ->
+                            TrackItem(track = track) {
+                                val index = tracks.indexOf(track)
+                                playTrack(index)
                             }
                         }
                     }
+                }
 
-                    if (currentIndex in tracks.indices) {
-                        val track = tracks[currentIndex]
-                        MusicPlayer(
-                            title = track.title,
-                            artist = "Unknown Artist",
-                            cover = track.cover,
-                            isPlaying = isPlaying,
-                            progress = progress,
-                            isFullScreen = isFullScreen,
-                            onToggleFullScreen = { isFullScreen = !isFullScreen },
-                            onPlayPauseClick = {
-                                mediaPlayer.value?.let {
-                                    if (it.isPlaying) it.pause() else it.start()
-                                    isPlaying = it.isPlaying
-                                }
-                            },
-                            onNextClick = {
-                                val nextIndex = (currentIndex + 1) % tracks.size
-                                playTrack(nextIndex)
-                            },
-                            onPrevClick = {
-                                val prevIndex = if (currentIndex - 1 < 0) tracks.size - 1 else currentIndex - 1
-                                playTrack(prevIndex)
-                            },
-                            modifier = if (isFullScreen) Modifier.fillMaxSize()
-                            else Modifier.wrapContentHeight().fillMaxWidth()
-                        )
-                    }
+                if (currentIndex in tracks.indices) {
+                    val track = tracks[currentIndex]
+                    val bitmap = track.cover?.let { BitmapFactory.decodeByteArray(it, 0, it.size) }
+                    val trackDominantColor = bitmap?.let { extractDominantColor(it) } ?: Color(0xFF1E1E1E)
+                    val trackProgressColor = bitmap?.let { extractContrastColor(it) } ?: Color(0xFFFF4081)
+
+                    MusicPlayer(
+                        title = track.title,
+                        artist = "Unknown Artist",
+                        cover = track.cover,
+                        isPlaying = isPlaying,
+                        progress = progress,
+                        isFullScreen = isFullScreen,
+                        dominantColor = trackDominantColor,
+                        progressColor = trackProgressColor,
+                        onToggleFullScreen = { isFullScreen = !isFullScreen },
+                        onPlayPauseClick = {
+                            mediaPlayer.value?.let {
+                                if (it.isPlaying) it.pause() else it.start()
+                                isPlaying = it.isPlaying
+                            }
+                        },
+                        onNextClick = {
+                            val nextIndex = (currentIndex + 1) % tracks.size
+                            playTrack(nextIndex)
+                        },
+                        onPrevClick = {
+                            val prevIndex = if (currentIndex - 1 < 0) tracks.size - 1 else currentIndex - 1
+                            playTrack(prevIndex)
+                        },
+                        modifier = if (isFullScreen) Modifier.fillMaxSize()
+                        else Modifier.wrapContentHeight().fillMaxWidth()
+                    )
                 }
             }
         }
@@ -176,12 +203,39 @@ class MainActivity : ComponentActivity() {
         }
         return tracks
     }
+
+    private fun extractDominantColor(bitmap: android.graphics.Bitmap): Color? {
+        return try {
+            val palette = Palette.from(bitmap).generate()
+            palette.getDominantColor(android.graphics.Color.DKGRAY).let { Color(it) }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    private fun extractContrastColor(bitmap: android.graphics.Bitmap): Color {
+        return try {
+            val palette = Palette.from(bitmap).generate()
+            val vibrant = palette.getLightVibrantColor(android.graphics.Color.CYAN)
+            Color(vibrant)
+        } catch (e: Exception) {
+            Color(0xFFFF4081)
+        }
+    }
+}
+
+// Расширение для проверки яркости цвета
+private fun Color.isLight(): Boolean {
+    val brightness = 0.299 * red + 0.587 * green + 0.114 * blue
+    return brightness > 0.7
 }
 
 @Composable
 fun LoadingScreen() {
     Box(
-        modifier = Modifier.fillMaxSize().background(Color(0xFF121212)),
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xFF121212)),
         contentAlignment = Alignment.Center
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -205,10 +259,19 @@ fun TrackItem(track: Track, onClick: () -> Unit) {
         Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
             if (track.cover != null) {
                 val bitmap = BitmapFactory.decodeByteArray(track.cover, 0, track.cover.size)
-                Image(bitmap = bitmap.asImageBitmap(), contentDescription = null,
-                    modifier = Modifier.size(48.dp).background(Color.Gray, RoundedCornerShape(8.dp)))
+                Image(
+                    bitmap = bitmap.asImageBitmap(),
+                    contentDescription = null,
+                    modifier = Modifier
+                        .size(48.dp)
+                        .background(Color.Gray, RoundedCornerShape(8.dp))
+                )
             } else {
-                Box(modifier = Modifier.size(48.dp).background(Color.Gray, RoundedCornerShape(8.dp)))
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .background(Color.Gray, RoundedCornerShape(8.dp))
+                )
             }
             Spacer(modifier = Modifier.width(12.dp))
             Column {
@@ -226,20 +289,26 @@ fun MusicPlayer(
     isPlaying: Boolean,
     progress: Float,
     isFullScreen: Boolean,
+    dominantColor: Color,
+    progressColor: Color,
     onToggleFullScreen: () -> Unit,
     onPlayPauseClick: () -> Unit,
     onNextClick: () -> Unit,
     onPrevClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val contentColor = if (dominantColor.isLight()) Color.Black else Color.White
+
     Card(
         modifier = modifier.padding(8.dp),
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E1E))
+        colors = CardDefaults.cardColors(containerColor = dominantColor)
     ) {
         if (isFullScreen) {
             Column(
-                modifier = Modifier.fillMaxSize().padding(16.dp),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(16.dp),
                 verticalArrangement = Arrangement.SpaceBetween,
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
@@ -251,7 +320,7 @@ fun MusicPlayer(
                         Icon(
                             imageVector = Icons.Default.FullscreenExit,
                             contentDescription = "Свернуть",
-                            tint = Color.White
+                            tint = contentColor
                         )
                     }
                 }
@@ -272,8 +341,8 @@ fun MusicPlayer(
                 }
 
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(title, color = Color.White, style = MaterialTheme.typography.titleLarge)
-                    Text(artist, color = Color.LightGray, style = MaterialTheme.typography.bodyMedium)
+                    Text(title, color = contentColor, style = MaterialTheme.typography.titleLarge)
+                    Text(artist, color = contentColor.copy(alpha = 0.7f), style = MaterialTheme.typography.bodyMedium)
 
                     Spacer(modifier = Modifier.height(16.dp))
 
@@ -282,8 +351,8 @@ fun MusicPlayer(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(4.dp),
-                        color = Color(0xFFFF4081),
-                        trackColor = Color.DarkGray
+                        color = progressColor,
+                        trackColor = Color.DarkGray.copy(alpha = 0.3f)
                     )
 
                     Spacer(modifier = Modifier.height(16.dp))
@@ -294,18 +363,18 @@ fun MusicPlayer(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         IconButton(onClick = onPrevClick) {
-                            Icon(Icons.Default.SkipPrevious, contentDescription = "Previous", tint = Color.White)
+                            Icon(Icons.Default.SkipPrevious, contentDescription = "Previous", tint = contentColor)
                         }
                         IconButton(onClick = onPlayPauseClick) {
                             Icon(
                                 imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
                                 contentDescription = "Play/Pause",
-                                tint = Color.White,
+                                tint = contentColor,
                                 modifier = Modifier.size(48.dp)
                             )
                         }
                         IconButton(onClick = onNextClick) {
-                            Icon(Icons.Default.SkipNext, contentDescription = "Next", tint = Color.White)
+                            Icon(Icons.Default.SkipNext, contentDescription = "Next", tint = contentColor)
                         }
                     }
                 }
@@ -323,7 +392,7 @@ fun MusicPlayer(
                         Icon(
                             imageVector = Icons.Default.Fullscreen,
                             contentDescription = "Развернуть",
-                            tint = Color.White
+                            tint = contentColor
                         )
                     }
                 }
@@ -344,8 +413,8 @@ fun MusicPlayer(
                     )
                 }
 
-                Text(title, color = Color.White, style = MaterialTheme.typography.titleLarge)
-                Text(artist, color = Color.LightGray, style = MaterialTheme.typography.bodyMedium)
+                Text(title, color = contentColor, style = MaterialTheme.typography.titleLarge)
+                Text(artist, color = contentColor.copy(alpha = 0.7f), style = MaterialTheme.typography.bodyMedium)
 
                 Spacer(modifier = Modifier.height(16.dp))
 
@@ -354,8 +423,8 @@ fun MusicPlayer(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(4.dp),
-                    color = Color(0xFFFF4081),
-                    trackColor = Color.DarkGray
+                    color = progressColor,
+                    trackColor = Color.DarkGray.copy(alpha = 0.3f)
                 )
 
                 Spacer(modifier = Modifier.height(16.dp))
@@ -366,18 +435,18 @@ fun MusicPlayer(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     IconButton(onClick = onPrevClick) {
-                        Icon(Icons.Default.SkipPrevious, contentDescription = "Previous", tint = Color.White)
+                        Icon(Icons.Default.SkipPrevious, contentDescription = "Previous", tint = contentColor)
                     }
                     IconButton(onClick = onPlayPauseClick) {
                         Icon(
                             imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
                             contentDescription = "Play/Pause",
-                            tint = Color.White,
+                            tint = contentColor,
                             modifier = Modifier.size(48.dp)
                         )
                     }
                     IconButton(onClick = onNextClick) {
-                        Icon(Icons.Default.SkipNext, contentDescription = "Next", tint = Color.White)
+                        Icon(Icons.Default.SkipNext, contentDescription = "Next", tint = contentColor)
                     }
                 }
             }
