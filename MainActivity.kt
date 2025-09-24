@@ -26,11 +26,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 import java.io.File
-
 
 data class Track(
     val title: String,
@@ -39,10 +37,6 @@ data class Track(
 )
 
 class MainActivity : ComponentActivity() {
-
-    private var mediaPlayer: MediaPlayer? = null
-    private var currentIndex: Int = -1
-    private var isPlaying: Boolean = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -57,12 +51,13 @@ class MainActivity : ComponentActivity() {
 
     @Composable
     fun MusicApp() {
-        val context = LocalContext.current
         var hasPermission by remember { mutableStateOf(false) }
         val tracks = remember { mutableStateListOf<Track>() }
         var currentIndex by remember { mutableStateOf(-1) }
         var isPlaying by remember { mutableStateOf(false) }
         var progress by remember { mutableStateOf(0f) }
+        var isFullScreen by remember { mutableStateOf(false) }
+        var isLoading by remember { mutableStateOf(true) }
 
         val mediaPlayer = remember { mutableStateOf<MediaPlayer?>(null) }
 
@@ -71,7 +66,11 @@ class MainActivity : ComponentActivity() {
         ) { permissions ->
             hasPermission = permissions.values.all { it }
             if (hasPermission) {
+                // запускаем сканирование в фоне
                 tracks.addAll(scanAudioFiles(Environment.getExternalStorageDirectory()))
+                isLoading = false
+            } else {
+                isLoading = false
             }
         }
 
@@ -87,7 +86,7 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        // Прогресс
+        // Прогресс трека
         LaunchedEffect(currentIndex, isPlaying) {
             while (isPlaying && mediaPlayer.value?.isPlaying == true) {
                 progress = mediaPlayer.value?.currentPosition?.toFloat()
@@ -110,39 +109,53 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        Column {
-            LazyColumn(modifier = Modifier.weight(1f)) {
-                items(tracks) { track ->
-                    TrackItem(track = track) {
-                        val index = tracks.indexOf(track)
-                        playTrack(index)
-                    }
-                }
+        when {
+            isLoading -> {
+                LoadingScreen()
             }
 
-            if (currentIndex in tracks.indices) {
-                val track = tracks[currentIndex]
-                MusicPlayer(
-                    title = track.title,
-                    artist = "Unknown Artist",
-                    cover = track.cover,
-                    isPlaying = isPlaying,
-                    progress = progress,
-                    onPlayPauseClick = {
-                        mediaPlayer.value?.let {
-                            if (it.isPlaying) it.pause() else it.start()
-                            isPlaying = it.isPlaying
+            else -> {
+                Column(modifier = Modifier.fillMaxSize()) {
+                    if (!isFullScreen) {
+                        LazyColumn(modifier = Modifier.weight(1f)) {
+                            items(tracks) { track ->
+                                TrackItem(track = track) {
+                                    val index = tracks.indexOf(track)
+                                    playTrack(index)
+                                }
+                            }
                         }
-                    },
-                    onNextClick = {
-                        val nextIndex = (currentIndex + 1) % tracks.size
-                        playTrack(nextIndex)
-                    },
-                    onPrevClick = {
-                        val prevIndex = if (currentIndex - 1 < 0) tracks.size - 1 else currentIndex - 1
-                        playTrack(prevIndex)
                     }
-                )
+
+                    if (currentIndex in tracks.indices) {
+                        val track = tracks[currentIndex]
+                        MusicPlayer(
+                            title = track.title,
+                            artist = "Unknown Artist",
+                            cover = track.cover,
+                            isPlaying = isPlaying,
+                            progress = progress,
+                            isFullScreen = isFullScreen,
+                            onToggleFullScreen = { isFullScreen = !isFullScreen },
+                            onPlayPauseClick = {
+                                mediaPlayer.value?.let {
+                                    if (it.isPlaying) it.pause() else it.start()
+                                    isPlaying = it.isPlaying
+                                }
+                            },
+                            onNextClick = {
+                                val nextIndex = (currentIndex + 1) % tracks.size
+                                playTrack(nextIndex)
+                            },
+                            onPrevClick = {
+                                val prevIndex = if (currentIndex - 1 < 0) tracks.size - 1 else currentIndex - 1
+                                playTrack(prevIndex)
+                            },
+                            modifier = if (isFullScreen) Modifier.fillMaxSize()
+                            else Modifier.wrapContentHeight().fillMaxWidth()
+                        )
+                    }
+                }
             }
         }
     }
@@ -162,6 +175,20 @@ class MainActivity : ComponentActivity() {
             }
         }
         return tracks
+    }
+}
+
+@Composable
+fun LoadingScreen() {
+    Box(
+        modifier = Modifier.fillMaxSize().background(Color(0xFF121212)),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            CircularProgressIndicator(color = Color(0xFFFF4081))
+            Spacer(modifier = Modifier.height(16.dp))
+            Text("Загрузка музыки...", color = Color.White)
+        }
     }
 }
 
@@ -198,74 +225,160 @@ fun MusicPlayer(
     cover: ByteArray? = null,
     isPlaying: Boolean,
     progress: Float,
+    isFullScreen: Boolean,
+    onToggleFullScreen: () -> Unit,
     onPlayPauseClick: () -> Unit,
     onNextClick: () -> Unit,
-    onPrevClick: () -> Unit
+    onPrevClick: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(8.dp),
+        modifier = modifier.padding(8.dp),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E1E))
     ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-
-            if (cover != null) {
-                val bitmap = BitmapFactory.decodeByteArray(cover, 0, cover.size)
-                Image(
-                    bitmap = bitmap.asImageBitmap(),
-                    contentDescription = "Cover",
-                    modifier = Modifier
-                        .size(200.dp)
-                        .padding(bottom = 16.dp)
-                )
-            } else {
-                Box(
-                    modifier = Modifier
-                        .size(200.dp)
-                        .background(Color.Gray, RoundedCornerShape(16.dp))
-                        .padding(bottom = 16.dp)
-                )
-            }
-
-            Text(title, color = Color.White, style = MaterialTheme.typography.titleLarge)
-            Text(artist, color = Color.LightGray, style = MaterialTheme.typography.bodyMedium)
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            LinearProgressIndicator(
-                progress = progress,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(4.dp),
-                color = Color(0xFFFF4081),
-                trackColor = Color.DarkGray
-            )
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceEvenly,
-                verticalAlignment = Alignment.CenterVertically
+        if (isFullScreen) {
+            Column(
+                modifier = Modifier.fillMaxSize().padding(16.dp),
+                verticalArrangement = Arrangement.SpaceBetween,
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                IconButton(onClick = onPrevClick) {
-                    Icon(Icons.Default.SkipPrevious, contentDescription = "Previous", tint = Color.White)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    IconButton(onClick = onToggleFullScreen) {
+                        Icon(
+                            imageVector = Icons.Default.FullscreenExit,
+                            contentDescription = "Свернуть",
+                            tint = Color.White
+                        )
+                    }
                 }
-                IconButton(onClick = onPlayPauseClick) {
-                    Icon(
-                        imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                        contentDescription = "Play/Pause",
-                        tint = Color.White,
-                        modifier = Modifier.size(48.dp)
+
+                if (cover != null) {
+                    val bitmap = BitmapFactory.decodeByteArray(cover, 0, cover.size)
+                    Image(
+                        bitmap = bitmap.asImageBitmap(),
+                        contentDescription = "Cover",
+                        modifier = Modifier.size(300.dp)
+                    )
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .size(300.dp)
+                            .background(Color.Gray, RoundedCornerShape(16.dp))
                     )
                 }
-                IconButton(onClick = onNextClick) {
-                    Icon(Icons.Default.SkipNext, contentDescription = "Next", tint = Color.White)
+
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(title, color = Color.White, style = MaterialTheme.typography.titleLarge)
+                    Text(artist, color = Color.LightGray, style = MaterialTheme.typography.bodyMedium)
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    LinearProgressIndicator(
+                        progress = progress,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(4.dp),
+                        color = Color(0xFFFF4081),
+                        trackColor = Color.DarkGray
+                    )
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceEvenly,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        IconButton(onClick = onPrevClick) {
+                            Icon(Icons.Default.SkipPrevious, contentDescription = "Previous", tint = Color.White)
+                        }
+                        IconButton(onClick = onPlayPauseClick) {
+                            Icon(
+                                imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                                contentDescription = "Play/Pause",
+                                tint = Color.White,
+                                modifier = Modifier.size(48.dp)
+                            )
+                        }
+                        IconButton(onClick = onNextClick) {
+                            Icon(Icons.Default.SkipNext, contentDescription = "Next", tint = Color.White)
+                        }
+                    }
+                }
+            }
+        } else {
+            Column(
+                modifier = Modifier.wrapContentHeight().padding(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    IconButton(onClick = onToggleFullScreen) {
+                        Icon(
+                            imageVector = Icons.Default.Fullscreen,
+                            contentDescription = "Развернуть",
+                            tint = Color.White
+                        )
+                    }
+                }
+
+                if (cover != null) {
+                    val bitmap = BitmapFactory.decodeByteArray(cover, 0, cover.size)
+                    Image(
+                        bitmap = bitmap.asImageBitmap(),
+                        contentDescription = "Cover",
+                        modifier = Modifier.size(200.dp).padding(bottom = 16.dp)
+                    )
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .size(200.dp)
+                            .background(Color.Gray, RoundedCornerShape(16.dp))
+                            .padding(bottom = 16.dp)
+                    )
+                }
+
+                Text(title, color = Color.White, style = MaterialTheme.typography.titleLarge)
+                Text(artist, color = Color.LightGray, style = MaterialTheme.typography.bodyMedium)
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                LinearProgressIndicator(
+                    progress = progress,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(4.dp),
+                    color = Color(0xFFFF4081),
+                    trackColor = Color.DarkGray
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(onClick = onPrevClick) {
+                        Icon(Icons.Default.SkipPrevious, contentDescription = "Previous", tint = Color.White)
+                    }
+                    IconButton(onClick = onPlayPauseClick) {
+                        Icon(
+                            imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                            contentDescription = "Play/Pause",
+                            tint = Color.White,
+                            modifier = Modifier.size(48.dp)
+                        )
+                    }
+                    IconButton(onClick = onNextClick) {
+                        Icon(Icons.Default.SkipNext, contentDescription = "Next", tint = Color.White)
+                    }
                 }
             }
         }
