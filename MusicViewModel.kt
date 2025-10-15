@@ -4,8 +4,10 @@ import android.media.MediaPlayer
 import androidx.compose.runtime.*
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.io.File
 
 class MusicViewModel : ViewModel() {
 
@@ -21,11 +23,19 @@ class MusicViewModel : ViewModel() {
     var progress by mutableStateOf(0f)
         private set
 
+    var isLoading by mutableStateOf(true)
+        private set
+
     var mediaPlayer: MediaPlayer? = null
 
-    fun setTracks(list: List<Track>) {
-        tracks.clear()
-        tracks.addAll(list)
+    fun loadTracksAsync(rootDir: File) {
+        isLoading = true
+        viewModelScope.launch(Dispatchers.IO) {
+            val scannedTracks = scanAudioFiles(rootDir)
+            tracks.clear()
+            tracks.addAll(scannedTracks)
+            isLoading = false
+        }
     }
 
     fun playTrack(index: Int) {
@@ -50,11 +60,13 @@ class MusicViewModel : ViewModel() {
     }
 
     fun nextTrack() {
+        if (tracks.isEmpty()) return
         val nextIndex = (currentIndex + 1) % tracks.size
         playTrack(nextIndex)
     }
 
     fun prevTrack() {
+        if (tracks.isEmpty()) return
         val prevIndex = if (currentIndex - 1 < 0) tracks.size - 1 else currentIndex - 1
         playTrack(prevIndex)
     }
@@ -66,6 +78,25 @@ class MusicViewModel : ViewModel() {
                 delay(500)
             }
         }
+    }
+
+    private fun scanAudioFiles(dir: File): List<Track> {
+        val tracks = mutableListOf<Track>()
+        dir.listFiles()?.forEach { file ->
+            if (file.isDirectory) {
+                tracks.addAll(scanAudioFiles(file))
+            } else if (file.extension.lowercase() in listOf("mp3", "wav", "m4a", "flac")) {
+                if (file.length() > 10 * 1024) { // >10KB
+                    val cover = try {
+                        val mmr = android.media.MediaMetadataRetriever()
+                        mmr.setDataSource(file.absolutePath)
+                        mmr.embeddedPicture
+                    } catch (e: Exception) { null }
+                    tracks.add(Track(file.nameWithoutExtension, file.absolutePath, cover))
+                }
+            }
+        }
+        return tracks
     }
 
     override fun onCleared() {
