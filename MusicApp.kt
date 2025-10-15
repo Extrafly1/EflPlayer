@@ -2,7 +2,6 @@ package com.example.eflplayer
 
 import android.Manifest
 import android.graphics.BitmapFactory
-import android.media.MediaMetadataRetriever
 import android.os.Build
 import android.os.Environment
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -19,16 +18,14 @@ import java.io.File
 fun MusicApp(viewModel: MusicViewModel, onDominantColorChange: (Color) -> Unit) {
     var hasPermission by remember { mutableStateOf(false) }
     var isFullScreen by remember { mutableStateOf(false) }
-    var isLoading by remember { mutableStateOf(true) }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
         hasPermission = permissions.values.all { it }
         if (hasPermission) {
-            viewModel.setTracks(scanAudioFiles(Environment.getExternalStorageDirectory()))
+            viewModel.loadTracksAsync(Environment.getExternalStorageDirectory())
         }
-        isLoading = false
     }
 
     LaunchedEffect(Unit) {
@@ -44,7 +41,7 @@ fun MusicApp(viewModel: MusicViewModel, onDominantColorChange: (Color) -> Unit) 
     }
 
     when {
-        isLoading -> LoadingScreen()
+        viewModel.isLoading -> LoadingScreen()
         else -> Column(modifier = Modifier.fillMaxSize()) {
             if (!isFullScreen) {
                 LazyColumn(modifier = Modifier.weight(1f)) {
