@@ -3,7 +3,7 @@ package com.example.eflplayer
 import android.graphics.BitmapFactory
 import android.media.MediaPlayer
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.EaseInOut
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -21,7 +21,16 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.unit.dp
 import java.util.concurrent.TimeUnit
-import androidx.compose.animation.core.EaseInOut
+
+enum class PlaybackMode {
+    Sequential,
+    RepeatOne;
+
+    fun next(): PlaybackMode = when (this) {
+        Sequential -> RepeatOne
+        RepeatOne -> Sequential
+    }
+}
 
 @Composable
 fun TrackItem(track: Track, onClick: () -> Unit) {
@@ -94,6 +103,9 @@ fun MusicPlayer(
     val contentColor = if (dominantColor.isLight()) Color.Black else Color.White
     var sliderPosition by remember { mutableStateOf(progress) }
 
+    // Состояние режима воспроизведения
+    var playbackMode by remember { mutableStateOf(PlaybackMode.Sequential) }
+
     LaunchedEffect(progress) {
         sliderPosition = progress
     }
@@ -104,22 +116,29 @@ fun MusicPlayer(
         return String.format("%02d:%02d", minutes, seconds)
     }
 
-    // Анимация пульсации обложки
+    // Пульсация обложки
     val scale = remember { Animatable(1f) }
     LaunchedEffect(isPlaying) {
         if (isPlaying) {
             while (true) {
-                scale.animateTo(
-                    targetValue = 1.01f,
-                    animationSpec = tween(4400, easing = EaseInOut)
-                )
-                scale.animateTo(
-                    targetValue = 0.99f,
-                    animationSpec = tween(4400, easing = EaseInOut)
-                )
+                scale.animateTo(1.01f, animationSpec = tween(4400, easing = EaseInOut))
+                scale.animateTo(0.99f, animationSpec = tween(4400, easing = EaseInOut))
             }
         } else {
             scale.snapTo(1f)
+        }
+    }
+
+    // Обработка завершения трека
+    LaunchedEffect(mediaPlayer, playbackMode) {
+        mediaPlayer.setOnCompletionListener {
+            when (playbackMode) {
+                PlaybackMode.Sequential -> onNextClick()
+                PlaybackMode.RepeatOne -> {
+                    mediaPlayer.seekTo(0)
+                    mediaPlayer.start()
+                }
+            }
         }
     }
 
@@ -138,12 +157,24 @@ fun MusicPlayer(
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End
+                    horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     IconButton(onClick = onToggleFullScreen) {
                         Icon(
                             imageVector = Icons.Default.FullscreenExit,
                             contentDescription = "Свернуть",
+                            tint = contentColor
+                        )
+                    }
+
+                    // Кнопка переключения сценария воспроизведения
+                    IconButton(onClick = { playbackMode = playbackMode.next() }) {
+                        Icon(
+                            imageVector = when (playbackMode) {
+                                PlaybackMode.Sequential -> Icons.Default.Repeat
+                                PlaybackMode.RepeatOne -> Icons.Default.RepeatOne
+                            },
+                            contentDescription = "Playback Mode",
                             tint = contentColor
                         )
                     }
@@ -224,19 +255,29 @@ fun MusicPlayer(
             }
         } else {
             Column(
-                modifier = Modifier
-                    .wrapContentHeight()
-                    .padding(16.dp),
+                modifier = Modifier.wrapContentHeight().padding(16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End
+                    horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     IconButton(onClick = onToggleFullScreen) {
                         Icon(
                             imageVector = Icons.Default.Fullscreen,
                             contentDescription = "Развернуть",
+                            tint = contentColor
+                        )
+                    }
+
+                    // Кнопка переключения сценария воспроизведения
+                    IconButton(onClick = { playbackMode = playbackMode.next() }) {
+                        Icon(
+                            imageVector = when (playbackMode) {
+                                PlaybackMode.Sequential -> Icons.Default.Repeat
+                                PlaybackMode.RepeatOne -> Icons.Default.RepeatOne
+                            },
+                            contentDescription = "Playback Mode",
                             tint = contentColor
                         )
                     }
