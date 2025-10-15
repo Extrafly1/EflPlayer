@@ -92,8 +92,20 @@ fun MusicApp(viewModel: MusicViewModel, onDominantColorChange: (Color) -> Unit) 
 
 fun scanAudioFiles(dir: File): List<Track> {
     val tracks = mutableListOf<Track>()
+
+    // список путей, которые нужно пропустить
+    val excludedDirs = listOf(
+        "/Android", "/DCIM/.thumbnails", "/system", "/data", "/cache",
+        "/proc", "/dev", "/acct", "/vendor", "/sys"
+    )
+
     dir.listFiles()?.forEach { file ->
+        // пропускаем скрытые и системные каталоги
         if (file.isDirectory) {
+            val path = file.absolutePath
+            if (excludedDirs.any { path.startsWith(it) || path.contains(it) } || file.name.startsWith(".")) {
+                return@forEach
+            }
             tracks.addAll(scanAudioFiles(file))
         } else if (file.extension.lowercase() in listOf("mp3", "wav", "m4a", "flac")) {
             if (file.length() > 10 * 1024) {
@@ -101,10 +113,13 @@ fun scanAudioFiles(dir: File): List<Track> {
                     val mmr = android.media.MediaMetadataRetriever()
                     mmr.setDataSource(file.absolutePath)
                     mmr.embeddedPicture
-                } catch (e: Exception) { null }
+                } catch (e: Exception) {
+                    null
+                }
                 tracks.add(Track(file.nameWithoutExtension, file.absolutePath, cover))
             }
         }
     }
+
     return tracks
 }
