@@ -32,6 +32,12 @@ enum class PlaybackMode {
     }
 }
 
+enum class PlayerSize {
+    Full,
+    Medium,
+    Mini
+}
+
 @Composable
 fun TrackItem(track: Track, onClick: () -> Unit) {
     Card(
@@ -90,10 +96,10 @@ fun MusicPlayer(
     cover: ByteArray? = null,
     isPlaying: Boolean,
     progress: Float,
-    isFullScreen: Boolean,
+    playerSize: PlayerSize,
     dominantColor: Color,
     progressColor: Color,
-    onToggleFullScreen: () -> Unit,
+    onTogglePlayerSize: () -> Unit,
     onPlayPauseClick: () -> Unit,
     onNextClick: () -> Unit,
     onPrevClick: () -> Unit,
@@ -103,12 +109,9 @@ fun MusicPlayer(
     val contentColor = if (dominantColor.isLight()) Color.Black else Color.White
     var sliderPosition by remember { mutableStateOf(progress) }
 
-    // Состояние режима воспроизведения
     var playbackMode by remember { mutableStateOf(PlaybackMode.Sequential) }
 
-    LaunchedEffect(progress) {
-        sliderPosition = progress
-    }
+    LaunchedEffect(progress) { sliderPosition = progress }
 
     fun formatTime(ms: Int): String {
         val minutes = TimeUnit.MILLISECONDS.toMinutes(ms.toLong())
@@ -116,7 +119,6 @@ fun MusicPlayer(
         return String.format("%02d:%02d", minutes, seconds)
     }
 
-    // Пульсация обложки
     val scale = remember { Animatable(1f) }
     LaunchedEffect(isPlaying) {
         if (isPlaying) {
@@ -129,7 +131,6 @@ fun MusicPlayer(
         }
     }
 
-    // Обработка завершения трека
     LaunchedEffect(mediaPlayer, playbackMode) {
         mediaPlayer.setOnCompletionListener {
             when (playbackMode) {
@@ -147,63 +148,181 @@ fun MusicPlayer(
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = dominantColor)
     ) {
-        if (isFullScreen) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(16.dp),
-                verticalArrangement = Arrangement.SpaceBetween,
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
+        when(playerSize) {
+
+            PlayerSize.Full -> {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.SpaceBetween,
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    IconButton(onClick = onToggleFullScreen) {
-                        Icon(
-                            imageVector = Icons.Default.FullscreenExit,
-                            contentDescription = "Свернуть",
-                            tint = contentColor
-                        )
+                    // Верхняя панель
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        IconButton(onClick = onTogglePlayerSize) {
+                            Icon(
+                                imageVector = Icons.Default.FullscreenExit,
+                                contentDescription = "Свернуть",
+                                tint = contentColor
+                            )
+                        }
+
+                        IconButton(onClick = { playbackMode = playbackMode.next() }) {
+                            Icon(
+                                imageVector = when (playbackMode) {
+                                    PlaybackMode.Sequential -> Icons.Default.Repeat
+                                    PlaybackMode.RepeatOne -> Icons.Default.RepeatOne
+                                },
+                                contentDescription = "Playback Mode",
+                                tint = contentColor
+                            )
+                        }
                     }
 
-                    // Кнопка переключения сценария воспроизведения
-                    IconButton(onClick = { playbackMode = playbackMode.next() }) {
-                        Icon(
-                            imageVector = when (playbackMode) {
-                                PlaybackMode.Sequential -> Icons.Default.Repeat
-                                PlaybackMode.RepeatOne -> Icons.Default.RepeatOne
+                    // Центр: обложка + текст
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        if (cover != null) {
+                            val bitmap = BitmapFactory.decodeByteArray(cover, 0, cover.size)
+                            Image(
+                                bitmap = bitmap.asImageBitmap(),
+                                contentDescription = "Cover",
+                                modifier = Modifier
+                                    .size(300.dp)
+                                    .scale(scale.value)
+                            )
+                        } else {
+                            Box(
+                                modifier = Modifier
+                                    .size(300.dp)
+                                    .background(Color.Gray, RoundedCornerShape(16.dp))
+                                    .scale(scale.value)
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        Text(title, color = contentColor, style = MaterialTheme.typography.titleLarge)
+                        Text(artist, color = contentColor.copy(alpha = 0.7f), style = MaterialTheme.typography.bodyMedium)
+                    }
+
+                    // Нижняя панель: слайдер + кнопки
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        Slider(
+                            value = sliderPosition,
+                            onValueChange = { sliderPosition = it },
+                            onValueChangeFinished = {
+                                val newPosition = (mediaPlayer.duration * sliderPosition).toInt()
+                                mediaPlayer.seekTo(newPosition)
                             },
-                            contentDescription = "Playback Mode",
-                            tint = contentColor
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = SliderDefaults.colors(
+                                thumbColor = progressColor,
+                                activeTrackColor = progressColor,
+                                inactiveTrackColor = Color.DarkGray.copy(alpha = 0.3f)
+                            )
                         )
+
+                        Spacer(modifier = Modifier.height(4.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(formatTime(mediaPlayer.currentPosition), color = contentColor, style = MaterialTheme.typography.bodySmall)
+                            Text(formatTime(mediaPlayer.duration), color = contentColor, style = MaterialTheme.typography.bodySmall)
+                        }
+
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceEvenly,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            IconButton(onClick = onPrevClick) {
+                                Icon(Icons.Default.SkipPrevious, contentDescription = "Previous", tint = contentColor)
+                            }
+                            IconButton(onClick = onPlayPauseClick) {
+                                Icon(
+                                    imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                                    contentDescription = "Play/Pause",
+                                    tint = contentColor,
+                                    modifier = Modifier.size(48.dp)
+                                )
+                            }
+                            IconButton(onClick = onNextClick) {
+                                Icon(Icons.Default.SkipNext, contentDescription = "Next", tint = contentColor)
+                            }
+                        }
                     }
                 }
+            }
 
-                if (cover != null) {
-                    val bitmap = BitmapFactory.decodeByteArray(cover, 0, cover.size)
-                    Image(
-                        bitmap = bitmap.asImageBitmap(),
-                        contentDescription = "Cover",
-                        modifier = Modifier
-                            .size(300.dp)
-                            .scale(scale.value)
-                    )
-                } else {
-                    Box(
-                        modifier = Modifier
-                            .size(300.dp)
-                            .background(Color.Gray, RoundedCornerShape(16.dp))
-                            .scale(scale.value)
-                    )
-                }
+            PlayerSize.Medium, PlayerSize.Mini -> {
+                Column(
+                    modifier = Modifier.wrapContentHeight().padding(16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    // Верхняя панель
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        IconButton(onClick = onTogglePlayerSize) {
+                            Icon(
+                                imageVector = Icons.Default.Fullscreen,
+                                contentDescription = "Развернуть",
+                                tint = contentColor
+                            )
+                        }
 
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(title, color = contentColor, style = MaterialTheme.typography.titleLarge)
-                    Text(artist, color = contentColor.copy(alpha = 0.7f), style = MaterialTheme.typography.bodyMedium)
+                        IconButton(onClick = { playbackMode = playbackMode.next() }) {
+                            Icon(
+                                imageVector = when (playbackMode) {
+                                    PlaybackMode.Sequential -> Icons.Default.Repeat
+                                    PlaybackMode.RepeatOne -> Icons.Default.RepeatOne
+                                },
+                                contentDescription = "Playback Mode",
+                                tint = contentColor
+                            )
+                        }
+                    }
 
                     Spacer(modifier = Modifier.height(16.dp))
 
+                    if (playerSize != PlayerSize.Mini) {
+                        if (cover != null) {
+                            val bitmap = BitmapFactory.decodeByteArray(cover, 0, cover.size)
+                            Image(
+                                bitmap = bitmap.asImageBitmap(),
+                                contentDescription = "Cover",
+                                modifier = Modifier
+                                    .size(200.dp)
+                                    .scale(scale.value)
+                            )
+                        } else {
+                            Box(
+                                modifier = Modifier
+                                    .size(200.dp)
+                                    .background(Color.Gray, RoundedCornerShape(16.dp))
+                                    .scale(scale.value)
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        Text(title, color = contentColor, style = MaterialTheme.typography.titleLarge)
+                        Text(artist, color = contentColor.copy(alpha = 0.7f), style = MaterialTheme.typography.bodyMedium)
+                        Spacer(modifier = Modifier.height(16.dp))
+                    }
+
+                    // Slider
                     Slider(
                         value = sliderPosition,
                         onValueChange = { sliderPosition = it },
@@ -231,6 +350,7 @@ fun MusicPlayer(
 
                     Spacer(modifier = Modifier.height(16.dp))
 
+                    // Кнопки управления
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceEvenly,
@@ -244,115 +364,12 @@ fun MusicPlayer(
                                 imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
                                 contentDescription = "Play/Pause",
                                 tint = contentColor,
-                                modifier = Modifier.size(48.dp)
+                                modifier = Modifier.size(if (playerSize == PlayerSize.Mini) 36.dp else 48.dp)
                             )
                         }
                         IconButton(onClick = onNextClick) {
                             Icon(Icons.Default.SkipNext, contentDescription = "Next", tint = contentColor)
                         }
-                    }
-                }
-            }
-        } else {
-            Column(
-                modifier = Modifier.wrapContentHeight().padding(16.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    IconButton(onClick = onToggleFullScreen) {
-                        Icon(
-                            imageVector = Icons.Default.Fullscreen,
-                            contentDescription = "Развернуть",
-                            tint = contentColor
-                        )
-                    }
-
-                    // Кнопка переключения сценария воспроизведения
-                    IconButton(onClick = { playbackMode = playbackMode.next() }) {
-                        Icon(
-                            imageVector = when (playbackMode) {
-                                PlaybackMode.Sequential -> Icons.Default.Repeat
-                                PlaybackMode.RepeatOne -> Icons.Default.RepeatOne
-                            },
-                            contentDescription = "Playback Mode",
-                            tint = contentColor
-                        )
-                    }
-                }
-
-                if (cover != null) {
-                    val bitmap = BitmapFactory.decodeByteArray(cover, 0, cover.size)
-                    Image(
-                        bitmap = bitmap.asImageBitmap(),
-                        contentDescription = "Cover",
-                        modifier = Modifier
-                            .size(200.dp)
-                            .padding(bottom = 16.dp)
-                            .scale(scale.value)
-                    )
-                } else {
-                    Box(
-                        modifier = Modifier
-                            .size(200.dp)
-                            .background(Color.Gray, RoundedCornerShape(16.dp))
-                            .padding(bottom = 16.dp)
-                            .scale(scale.value)
-                    )
-                }
-
-                Text(title, color = contentColor, style = MaterialTheme.typography.titleLarge)
-                Text(artist, color = contentColor.copy(alpha = 0.7f), style = MaterialTheme.typography.bodyMedium)
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                Slider(
-                    value = sliderPosition,
-                    onValueChange = { sliderPosition = it },
-                    onValueChangeFinished = {
-                        val newPosition = (mediaPlayer.duration * sliderPosition).toInt()
-                        mediaPlayer.seekTo(newPosition)
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = SliderDefaults.colors(
-                        thumbColor = progressColor,
-                        activeTrackColor = progressColor,
-                        inactiveTrackColor = Color.DarkGray.copy(alpha = 0.3f)
-                    )
-                )
-
-                Spacer(modifier = Modifier.height(4.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text(formatTime(mediaPlayer.currentPosition), color = contentColor, style = MaterialTheme.typography.bodySmall)
-                    Text(formatTime(mediaPlayer.duration), color = contentColor, style = MaterialTheme.typography.bodySmall)
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceEvenly,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    IconButton(onClick = onPrevClick) {
-                        Icon(Icons.Default.SkipPrevious, contentDescription = "Previous", tint = contentColor)
-                    }
-                    IconButton(onClick = onPlayPauseClick) {
-                        Icon(
-                            imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                            contentDescription = "Play/Pause",
-                            tint = contentColor,
-                            modifier = Modifier.size(48.dp)
-                        )
-                    }
-                    IconButton(onClick = onNextClick) {
-                        Icon(Icons.Default.SkipNext, contentDescription = "Next", tint = contentColor)
                     }
                 }
             }
