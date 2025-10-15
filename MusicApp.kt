@@ -17,7 +17,7 @@ import java.io.File
 @Composable
 fun MusicApp(viewModel: MusicViewModel, onDominantColorChange: (Color) -> Unit) {
     var hasPermission by remember { mutableStateOf(false) }
-    var isFullScreen by remember { mutableStateOf(false) }
+    var playerSize by remember { mutableStateOf(PlayerSize.Medium) }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
@@ -43,7 +43,7 @@ fun MusicApp(viewModel: MusicViewModel, onDominantColorChange: (Color) -> Unit) 
     when {
         viewModel.isLoading -> LoadingScreen()
         else -> Column(modifier = Modifier.fillMaxSize()) {
-            if (!isFullScreen) {
+            if (playerSize != PlayerSize.Full) {
                 LazyColumn(modifier = Modifier.weight(1f)) {
                     items(viewModel.tracks) { track ->
                         TrackItem(track) {
@@ -68,14 +68,20 @@ fun MusicApp(viewModel: MusicViewModel, onDominantColorChange: (Color) -> Unit) 
                     cover = track.cover,
                     isPlaying = viewModel.isPlaying,
                     progress = viewModel.progress,
-                    isFullScreen = isFullScreen,
+                    playerSize = playerSize,
                     dominantColor = trackDominantColor,
                     progressColor = trackProgressColor,
-                    onToggleFullScreen = { isFullScreen = !isFullScreen },
+                    onTogglePlayerSize = {
+                        playerSize = when(playerSize) {
+                            PlayerSize.Full -> PlayerSize.Medium
+                            PlayerSize.Medium -> PlayerSize.Mini
+                            PlayerSize.Mini -> PlayerSize.Full
+                        }
+                    },
                     onPlayPauseClick = { viewModel.togglePlayPause() },
                     onNextClick = { viewModel.nextTrack() },
                     onPrevClick = { viewModel.prevTrack() },
-                    modifier = if (isFullScreen) Modifier.fillMaxSize()
+                    modifier = if (playerSize == PlayerSize.Full) Modifier.fillMaxSize()
                     else Modifier.wrapContentHeight().fillMaxWidth(),
                     mediaPlayer = viewModel.mediaPlayer!!
                 )
@@ -90,7 +96,6 @@ fun scanAudioFiles(dir: File): List<Track> {
         if (file.isDirectory) {
             tracks.addAll(scanAudioFiles(file))
         } else if (file.extension.lowercase() in listOf("mp3", "wav", "m4a", "flac")) {
-            // Ограничение по размеру > 10 КБ
             if (file.length() > 10 * 1024) {
                 val cover = try {
                     val mmr = android.media.MediaMetadataRetriever()
@@ -103,4 +108,3 @@ fun scanAudioFiles(dir: File): List<Track> {
     }
     return tracks
 }
-
