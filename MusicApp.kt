@@ -1,6 +1,7 @@
 package com.example.eflplayer
 
 import android.Manifest
+import android.content.Intent
 import android.graphics.BitmapFactory
 import android.os.Build
 import android.os.Environment
@@ -12,12 +13,14 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import java.io.File
 
 @Composable
 fun MusicApp(viewModel: MusicViewModel, onDominantColorChange: (Color) -> Unit) {
     var hasPermission by remember { mutableStateOf(false) }
     var playerSize by remember { mutableStateOf(PlayerSize.Medium) }
+    val context = LocalContext.current
 
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
@@ -26,6 +29,26 @@ fun MusicApp(viewModel: MusicViewModel, onDominantColorChange: (Color) -> Unit) 
         if (hasPermission) {
             viewModel.loadTracksAsync(Environment.getExternalStorageDirectory())
         }
+    }
+
+    // Обработчик для кнопки поделиться (неявное намерение)
+    val shareTrack = { track: Track ->
+        val shareIntent = Intent().apply {
+            action = Intent.ACTION_SEND
+            type = "text/plain"
+            putExtra(Intent.EXTRA_TEXT, "Послушай трек: ${track.title}\nПуть: ${track.path}")
+            putExtra(Intent.EXTRA_SUBJECT, "Поделиться треком")
+        }
+        context.startActivity(Intent.createChooser(shareIntent, "Поделиться треком"))
+    }
+
+    // Обработчик для открытия детальной активности (явное намерение)
+    val openTrackDetail = { track: Track ->
+        val intent = Intent(context, TrackDetailActivity::class.java).apply {
+            putExtra("track", track) // Передаем объект Track
+            putExtra("message", "Детальная информация о треке") // Передаем дополнительное сообщение
+        }
+        context.startActivity(intent)
     }
 
     LaunchedEffect(Unit) {
@@ -46,10 +69,18 @@ fun MusicApp(viewModel: MusicViewModel, onDominantColorChange: (Color) -> Unit) 
             if (playerSize != PlayerSize.Full) {
                 LazyColumn(modifier = Modifier.weight(1f)) {
                     items(viewModel.tracks) { track ->
-                        TrackItem(track) {
-                            val index = viewModel.tracks.indexOf(track)
-                            viewModel.playTrack(index)
-                        }
+                        TrackItem(
+                            track = track,
+                            onClick = {
+                                val index = viewModel.tracks.indexOf(track)
+                                viewModel.playTrack(index)
+                            },
+                            onShareClick = { track ->
+                                // Двойное действие: поделиться и открыть детали
+                                shareTrack(track)
+                                openTrackDetail(track)
+                            }
+                        )
                     }
                 }
             }
