@@ -39,16 +39,37 @@ enum class PlayerSize {
 }
 
 @Composable
-fun TrackItem(track: Track, onClick: () -> Unit) {
+fun TrackItem(
+    track: Track,
+    onClick: () -> Unit,
+    onShareClick: (Track) -> Unit
+) {
+    // Получаем доминантный цвет из обложки
+    val dominantColor = remember(track.cover) {
+        if (track.cover != null) {
+            val bitmap = BitmapFactory.decodeByteArray(track.cover, 0, track.cover.size)
+            extractDominantColor(bitmap) ?: Color(0xFF1E1E1E)
+        } else {
+            Color(0xFF1E1E1E)
+        }
+    }
+
+    // Определяем контрастный цвет для текста
+    val textColor = if (dominantColor.isLight()) Color.Black else Color.White
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(8.dp)
-            .clickable { onClick() },
+            .padding(8.dp),
         shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E1E))
+        colors = CardDefaults.cardColors(containerColor = dominantColor)
     ) {
-        Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            modifier = Modifier
+                .padding(12.dp)
+                .clickable { onClick() },
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             if (track.cover != null) {
                 val bitmap = BitmapFactory.decodeByteArray(track.cover, 0, track.cover.size)
                 Image(
@@ -66,8 +87,23 @@ fun TrackItem(track: Track, onClick: () -> Unit) {
                 )
             }
             Spacer(modifier = Modifier.width(12.dp))
-            Column {
-                Text(track.title, color = Color.White, style = MaterialTheme.typography.titleMedium)
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    track.title,
+                    color = textColor,
+                    style = MaterialTheme.typography.titleMedium
+                )
+            }
+
+            // Кнопка поделиться
+            IconButton(
+                onClick = { onShareClick(track) }
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Share,
+                    contentDescription = "Поделиться",
+                    tint = textColor
+                )
             }
         }
     }
